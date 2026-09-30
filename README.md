@@ -45,25 +45,29 @@ BoardGameGeek requires every app that reads its data to be registered and to sen
    - **Website:** https://the-ljaw.github.io/game-night-madness/
    - **What it does:** A free web app that turns a user's owned BGG collection into a voting bracket, so a group can pick a game to play. It reads one user's collection (owned games) and game details (categories, mechanics, weight, player-count poll). Results are cached (collections for 30 minutes, game details for 7 days), details are requested 20 at a time about a second apart, and the app shows the "Powered by BGG" logo linking to BGG.
    - **Commercial or not:** non-commercial, for now. BGG requires a commercial license for any app that earns money (ads, affiliate links, paid features). It's free until 100 paying users or 1,000 ad-supported users.
-3. Once BGG approves the application, create a token on the same page. Keep it private.
+3. BGG reviews each application; other developers report about 1–2 business days. Once it's approved, create a token on the same page. Keep it private: it goes straight into Cloudflare (step 2.6) and nowhere else, not in this repository or a chat.
 4. Download the **Powered by BGG** logo from https://boardgamegeek.com/using_the_xml_api and add it to this repository as `powered-by-bgg.png`. BGG requires the logo on public apps, linked to BGG. The footer shows it; a text badge stands in until the file is there.
 
 ### 2. Put the helper on Cloudflare (free, about 10 minutes)
 
+You can do steps 1–5 while BGG reviews the application.
+
 1. Create a free account at https://dash.cloudflare.com.
-2. Go to **Workers & Pages**, create a Worker (the "Hello World" starter is fine), name it `gnm-bgg`, and deploy it.
-3. Open the Worker's code editor, replace everything with the contents of `bgg-helper/worker.js`, and deploy again.
-4. In the Worker's **Settings → Variables and Secrets**, add:
-   - `BGG_TOKEN`, type **Secret**: the token from BGG.
-   - `ALLOWED_ORIGINS`, type **Text**: `https://the-ljaw.github.io`
-5. Open the Worker's address (something like `https://gnm-bgg.your-subdomain.workers.dev`). It should say `ok`.
-6. Optional but recommended: create a **KV namespace** (Storage & Databases → KV) and bind it to the Worker with the variable name `CACHE`. Cloudflare's built-in cache only works on your own domain, so KV is what lets the helper reuse answers on a `workers.dev` address.
+2. Go to **Workers & Pages** → **Create application** → **Start with Hello World**. Name it `gnm-bgg` and click **Deploy**.
+3. Click **Edit code**, replace everything in the editor with the contents of [`bgg-helper/worker.js`](https://raw.githubusercontent.com/The-LJAW/game-night-madness/main/bgg-helper/worker.js), and click **Deploy**.
+4. Create a KV namespace for the cache: **Storage & Databases → KV** (Workers KV) → **Create**, and name it `gnm-bgg-cache`. Then open the Worker → **Bindings** → **Add binding** → **KV namespace**, set the variable name to `CACHE`, pick `gnm-bgg-cache`, and click **Add binding**. Cloudflare's built-in cache only works on your own domain, so KV is what lets the helper reuse answers on a `workers.dev` address.
+5. Open the Worker's address (something like `https://gnm-bgg.your-subdomain.workers.dev`). It shows a status page: `running`, `BGG token: not set yet`, `Cache: KV namespace bound as CACHE`.
+6. When BGG has approved the app: in the Worker's **Settings → Variables and Secrets**, click **Add**, choose type **Secret**, name it `BGG_TOKEN`, paste the token as the value, and click **Deploy**. Reload the status page; it should say `BGG token: set`.
+
+The helper only answers `https://the-ljaw.github.io`. If the app ever moves to its own domain, add a Text variable `ALLOWED_ORIGINS` with the new address (comma-separate several).
 
 ### 3. Point the app at the helper
 
 Near the top of the script in `src/app.js`, set `bggProxy` to the Worker's address, run `python3 build.py`, and upload the new `index.html`. (Or edit the same line directly in `index.html` on GitHub.)
 
 ## Put it online (GitHub Pages, about 3 minutes)
+
+This repository is already live at https://the-ljaw.github.io/game-night-madness/. To set up a copy elsewhere:
 
 1. On GitHub, create a new **public** repository, for example `game-night-madness`.
 2. Upload the files in this folder to the repository's main branch.

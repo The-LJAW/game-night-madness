@@ -11,13 +11,13 @@
  * Endpoints (GET):
  *   /collection?username=NAME   -> BGG XML for NAME's owned board games (no expansions)
  *   /thing?id=1,2,3             -> BGG XML details (with stats) for up to 20 game ids
- *   /                           -> "ok" (health check)
+ *   /                           -> status page: running, token set or not, cache, allowed sites
  *
  * Settings (Cloudflare dashboard -> the Worker -> Settings -> Variables and Secrets):
- *   BGG_TOKEN        Secret. The token from boardgamegeek.com/applications.
- *   ALLOWED_ORIGINS  Text. Comma-separated sites allowed to call this helper.
- *                    Default: https://the-ljaw.github.io
- * Optional: bind a KV namespace named CACHE for caching on *.workers.dev addresses
+ *   BGG_TOKEN        Secret. The token from boardgamegeek.com/applications. Required.
+ *   ALLOWED_ORIGINS  Text. Optional. Comma-separated sites allowed to call this helper.
+ *                    Default: https://the-ljaw.github.io (only change it for a custom domain)
+ * Binding (the Worker -> Bindings): a KV namespace named CACHE, so answers are reused
  * (Cloudflare's built-in cache only works once the Worker is on your own domain).
  */
 
@@ -43,7 +43,15 @@ export default {
 
     if (req.method === 'OPTIONS') return reply(null, 204);
     if (req.method !== 'GET') return reply('Only GET is allowed.', 405);
-    if (url.pathname === '/' || url.pathname === '') return reply('ok', 200);
+    if (url.pathname === '/' || url.pathname === '') {
+      // Status page: open the helper's address in a browser to check the setup. Never shows the token.
+      return reply([
+        'Game Night Madness BGG helper: running',
+        'BGG token: ' + (env.BGG_TOKEN ? 'set' : 'not set yet (add BGG_TOKEN as a Secret under Settings > Variables and Secrets)'),
+        'Cache: ' + (env.CACHE ? 'KV namespace bound as CACHE' : 'no KV bound (bind a KV namespace as CACHE so answers are reused)'),
+        'Allowed sites: ' + allowed.join(', ')
+      ].join('\n') + '\n', 200);
+    }
     // Browsers always send Origin on these cross-site calls; anything else isn't the app.
     if (!allowed.includes(origin)) return reply('This site is not allowed to use the BGG helper.', 403);
     if (!env.BGG_TOKEN) return reply('The BGG token is not set on this helper yet.', 503, {'X-GNM-Error': 'no-token'});
@@ -99,11 +107,13 @@ export default {
     const good = up.status === 200 && /<items[\s>]/.test(body.slice(0, 2000)) && !/<errors?[\s>]/.test(body.slice(0, 500));
     if (good) {
       const ttl = TTL[kind];
-      const save = env.CACHE
-        ? env.CACHE.put(cacheKey, body, {expirationTtl: ttl})
-        : caches.default.put(new Request('https://gnm-cache.invalid/' + encodeURIComponent(cacheKey)),
-            new Response(body, {headers: {'Content-Type': 'text/xml; charset=utf-8', 'Cache-Control': 'public, max-age=' + ttl}}));
-      ctx.waitUntil(Promise.resolve(save).catch(() => {}));
+      try {
+        const save = env.CACHE
+          ? env.CACHE.put(cacheKey, body, {expirationTtl: ttl})
+          : caches.default.put(new Request('https://gnm-cache.invalid/' + encodeURIComponent(cacheKey)),
+              new Response(body, {headers: {'Content-Type': 'text/xml; charset=utf-8', 'Cache-Control': 'public, max-age=' + ttl}}));
+        ctx.waitUntil(Promise.resolve(save).catch(() => {}));
+      } catch (e) { /* caching is a bonus; the answer still goes back */ }
     }
     return reply(body, up.status, xml(extra));
   }

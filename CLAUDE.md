@@ -9,7 +9,7 @@ A group game picker: the organizer's owned BoardGameGeek games go into a two-sta
 - `src/sample.js`: the sample shelf (64 well-known games), inserted into `app.js` at `/*@SAMPLE@*/`.
 - `src/body.html`, `src/palette.css`, `src/extra.css`: markup, colours (light and dark), app-specific styles.
 - `src/shared/`: taken from Dinner Madness: `layout.css` (its colour names mapped to `--accent`, `--gold`, `--ok`), Levi's coin art, the coin CSS, and the bundled QR library.
-- `bgg-helper/worker.js`: a Cloudflare Worker that holds the BGG token (`BGG_TOKEN` secret), only answers `ALLOWED_ORIGINS`, only allows `/collection?username=` and `/thing?id=` (1–20 ids), and caches (KV if bound as `CACHE`, otherwise the edge cache, which works only on a custom domain).
+- `bgg-helper/worker.js`: a Cloudflare Worker that holds the BGG token (`BGG_TOKEN` secret), only answers `ALLOWED_ORIGINS` (default `https://the-ljaw.github.io`), only allows `/collection?username=` and `/thing?id=` (1–20 ids), and caches (KV if bound as `CACHE`, otherwise the edge cache, which works only on a custom domain). `/` is a status page (token set or not, cache, allowed sites) that never shows the token. Deployed by pasting into the Cloudflare dashboard as the Worker `gnm-bgg`, so after changing it, tell Levi to paste it again.
 - `test/`: `worker.test.mjs` (Node), `app.test.mjs` (Playwright, with a fake helper and a fake ntfy shared by two "phones"), `fixtures.mjs` (BGG-format XML built from the sample shelf).
 
 ## How the app works

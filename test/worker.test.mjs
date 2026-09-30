@@ -32,9 +32,29 @@ await t('preflight answers with CORS for the allowed site', async () => {
   assert.equal(r.headers.get('Access-Control-Allow-Origin'), ORIGIN);
   assert.match(r.headers.get('Access-Control-Expose-Headers'), /Retry-After/);
 });
-await t('health check', async () => {
+await t('status page says what is set up, never the token', async () => {
   const r = await get('/', {});
-  assert.equal(r.status, 200); assert.equal(await r.text(), 'ok');
+  assert.equal(r.status, 200);
+  const txt = await r.text();
+  assert.match(txt, /BGG helper: running/);
+  assert.match(txt, /BGG token: set/);
+  assert.doesNotMatch(txt, /tok123/);
+  assert.match(txt, /Cache: no KV bound/);
+  assert.match(txt, /Allowed sites: https:\/\/the-ljaw\.github\.io, http:\/\/localhost:8765/);
+  const bare = await (await get('/', {}, {})).text();
+  assert.match(bare, /BGG token: not set yet/);
+  assert.match(bare, /Allowed sites: https:\/\/the-ljaw\.github\.io\n/, 'default site when ALLOWED_ORIGINS is not set');
+  const kv = await (await get('/', {}, {BGG_TOKEN: 'x', CACHE: {}})).text();
+  assert.match(kv, /Cache: KV namespace bound as CACHE/);
+});
+await t('a cache that throws never breaks the answer', async () => {
+  const saved = globalThis.caches;
+  globalThis.caches = {default: {match: () => { throw new Error('no cache here'); }, put: () => { throw new Error('no cache here'); }}};
+  try {
+    nextReply = {status: 200, body: '<items><item type="boardgame" id="822"/></items>'};
+    const r = await get('/thing?id=822');
+    assert.equal(r.status, 200); assert.match(await r.text(), /id="822"/);
+  } finally { globalThis.caches = saved; nextReply = {status: 200, body: '<?xml version="1.0"?><items totalitems="1"><item objectid="13"/></items>'}; }
 });
 await t('refuses calls without an allowed Origin', async () => {
   assert.equal((await get('/collection?username=levi', {})).status, 403);
