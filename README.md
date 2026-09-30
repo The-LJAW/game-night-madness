@@ -35,7 +35,7 @@ Games that fit no type in the chosen grouping go to **Wildcard**. A type that ho
 
 ## Connect BoardGameGeek (one-time setup)
 
-BoardGameGeek requires every app that reads its data to be registered and to send a token, and it asks apps to make their calls from a server and cache the results. So the app talks to BGG through a small helper, `bgg-helper/worker.js`, which runs free on Cloudflare Workers. Until the helper is set up, the app offers the sample shelf only.
+BoardGameGeek requires every app that reads its data to be registered and to send a token, and it asks apps to make their calls from a server and cache the results. So the app talks to BGG through a small helper, `bgg-helper/worker.js`, which runs free on Cloudflare Workers at https://gnm-bgg.levi-joseph-andrew-wilson.workers.dev. Until the helper has its BGG token, the app offers the sample shelf only.
 
 ### 1. Register the app with BGG
 
@@ -61,9 +61,9 @@ You can do steps 1–5 while BGG reviews the application.
 
 The helper only answers `https://the-ljaw.github.io`. If the app ever moves to its own domain, add a Text variable `ALLOWED_ORIGINS` with the new address (comma-separate several).
 
-### 3. Point the app at the helper
+### 3. The app switches over by itself
 
-Near the top of the script in `src/app.js`, set `bggProxy` to the Worker's address, run `python3 build.py`, and upload the new `index.html`. (Or edit the same line directly in `index.html` on GitHub.)
+The app already points at the helper (`bggProxy` near the top of `src/app.js`). When the setup screen opens, it reads the helper's status page and offers BGG shelves only once that says `BGG token: set`. So adding the token in Cloudflare switches the live site over on its own, with nothing to rebuild. If the helper ever moves, change `bggProxy`, run `python3 build.py`, and push.
 
 ## Put it online (GitHub Pages, about 3 minutes)
 

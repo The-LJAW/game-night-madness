@@ -58,6 +58,8 @@ async function fakeBgg(route) {
     if (bgg.thingCalls.length === 2 && !bgg.throttled) { bgg.throttled = true; return route.fulfill({status: 429, headers: Object.assign({}, h, {'Retry-After': '1'}), body: 'slow down'}); }
     return route.fulfill({status: 200, headers: h, body: thingXML(ids)});
   }
+  if (u.pathname === '/') return route.fulfill({status: 200, headers: Object.assign({}, h, {'Content-Type': 'text/plain; charset=utf-8'}),
+    body: 'Game Night Madness BGG helper: running\nBGG token: set\nCache: KV namespace bound as CACHE\nAllowed sites: http://localhost:8765\n'});
   return route.fulfill({status: 404, headers: h, body: 'not found'});
 }
 const topics = {};
@@ -93,6 +95,7 @@ async function wire(ctx, cfg) {
     return r.fulfill({status: 200, headers: {'Content-Type': 'image/svg+xml'}, body: `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="150"><rect width="200" height="150" fill="hsl(${hue},55%,45%)"/><rect x="20" y="20" width="160" height="110" rx="10" fill="hsl(${hue},60%,70%)"/><circle cx="100" cy="75" r="26" fill="hsl(${hue},50%,30%)"/></svg>`});
   });
   await ctx.route('https://*.posthog.com/**', r => r.abort());
+  await ctx.route('https://*.workers.dev/**', r => r.abort()); // never call the real BGG helper from tests
   await ctx.addInitScript(c => { window.GNM_CONFIG = c; window.GNM_TEST = true; }, cfg || {bggProxy: 'https://bgg.test', ntfy: 'https://ntfy.test'});
 }
 
@@ -367,11 +370,37 @@ await t('preview page: sample shelf, pass-the-phone voting to a winner', async (
 
 /* ============ 5. no helper configured yet ============ */
 await t('live page before the BGG helper exists: sample shelf only, with a note', async () => {
-  const {ctx, page} = await phone({cfg: {ntfy: 'https://ntfy.test'}});
+  const {ctx, page} = await phone({cfg: {bggProxy: '', ntfy: 'https://ntfy.test'}});
   await page.goto(BASE);
   assert.ok(await visible(page, '#shelf-sample'));
   assert.match(await page.textContent('#shelf-note'), /switches on once the BGG connection is set up/);
   assert.ok(!(await visible(page, '#preview-banner')));
+  await ctx.close();
+});
+await t('helper without its BGG token yet: sample shelf only, and it still plays', async () => {
+  const {ctx, page} = await phone();
+  let probes = 0;
+  await ctx.route('https://bgg.test/', r => { probes++; return r.fulfill({status: 200, headers: {'Access-Control-Allow-Origin': '*', 'Content-Type': 'text/plain'},
+    body: 'Game Night Madness BGG helper: running\nBGG token: not set yet (add BGG_TOKEN as a Secret under Settings > Variables and Secrets)\nCache: KV namespace bound as CACHE\n'}); });
+  await page.goto(BASE);
+  await page.waitForSelector('#shelf-sample:not([hidden])');
+  assert.equal(probes, 1, 'the status page is checked once');
+  assert.ok(!(await visible(page, '#shelf-bgg')), 'no username box while the token is missing');
+  assert.ok(!(await visible(page, '#btn-src')));
+  assert.match(await page.textContent('#shelf-note'), /switches on once the BGG connection is set up/);
+  assert.equal((await page.textContent('#btn-find')).trim(), 'Load the sample shelf');
+  await page.click('#btn-find');
+  await page.waitForSelector('#v-build:not([hidden])');
+  assert.match(await page.textContent('#build-eyebrow'), /^Sample shelf · /);
+  await ctx.close();
+});
+await t('helper can’t be reached: the username box stays, and loading explains the problem', async () => {
+  const {ctx, page} = await phone();
+  await ctx.route('https://bgg.test/', r => r.abort());
+  await page.goto(BASE);
+  await page.waitForTimeout(400);
+  assert.ok(await visible(page, '#shelf-bgg'));
+  assert.ok(await visible(page, '#btn-src'));
   await ctx.close();
 });
 
