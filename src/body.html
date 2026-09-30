@@ -1,0 +1,243 @@
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <a class="brand" href="./" aria-label="Game Night Madness home">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--accent)"/><path d="M6.5 9.5h6.5v13H6.5M13 16h6.5" fill="none" stroke="#fff" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="23.6" cy="16" r="3.4" fill="#fff"/></svg>
+      <span>Game Night <em>Madness</em></span>
+    </a>
+    <button type="button" class="codechip" id="codechip" hidden></button>
+  </div>
+</header>
+
+<main class="wrap">
+  <p class="banner" id="preview-banner" hidden><b>Preview.</b> This copy uses a sample shelf and runs on one phone. The live version loads your BoardGameGeek shelf, and everyone votes from their own phone.</p>
+
+  <!-- HOST: shelf, players, time -->
+  <section class="view" id="v-setup" hidden>
+    <div class="hero">
+      <p class="eyebrow">Can't decide what to play?</p>
+      <h1 class="display">Let the <span class="hl">bracket</span> decide</h1>
+      <p class="lede">Pull the games from your BoardGameGeek shelf, seed them into a tournament-style bracket, and let everyone at the table vote round by round until one game is left standing.</p>
+      <div class="hero-bk" aria-hidden="true">
+        <p class="eyebrow">How a round plays out</p>
+        <div id="hero-bracket"></div>
+      </div>
+      <div class="coin-tip">
+        <button type="button" class="coin-demo" id="coin-demo" aria-label="Flip the tiebreaker coin"><span class="coin-lift" id="coin-demo-lift"></span></button>
+        <p><b id="coin-demo-title">Tied vote? The coin decides.</b><small id="coin-demo-sub">Every phone sees the same flip. Tap the coin to try it.</small></p>
+      </div>
+    </div>
+
+    <div class="panel" id="recent-panel" hidden>
+      <h3>Jump back in</h3>
+      <ul class="recent" id="recent-list"></ul>
+    </div>
+
+    <section class="panel" aria-labelledby="h-shelf">
+      <div class="step"><span class="stepn">1</span><h2 id="h-shelf">Whose shelf?</h2></div>
+      <div id="shelf-bgg">
+        <label for="bgg-user" class="lbl">BoardGameGeek username</label>
+        <input type="text" id="bgg-user" placeholder="Your BGG username" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="40" enterkeyhint="go">
+        <p class="fine" style="margin-top:8px">We use the games marked <b>Owned</b> in that BGG collection, minus expansions. Collections on BGG are public, so no password is needed.</p>
+      </div>
+      <div class="shelf-src" id="shelf-sample" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16M5 20V6h3v14M9.5 20V9h3.5v11M14.5 20l2.2-12.5 3.1.6L17.6 20"/></svg>
+        <span><b>Sample shelf</b><small id="sample-sub">Popular games, for trying the app</small></span>
+      </div>
+      <p class="fine" id="shelf-note" hidden></p>
+      <button type="button" class="linkbtn" id="btn-src" hidden></button>
+    </section>
+
+    <section class="panel" aria-labelledby="h-players">
+      <div class="step"><span class="stepn">2</span><h2 id="h-players">How many are playing?</h2></div>
+      <div class="chips c7" id="players" role="group" aria-label="Number of players"></div>
+      <p class="fine">Games that can’t seat this many are left out.</p>
+    </section>
+
+    <section class="panel" aria-labelledby="h-time">
+      <div class="step"><span class="stepn">3</span><h2 id="h-time">How much time do you have?</h2></div>
+      <div class="chips c6" id="times" role="group" aria-label="Longest game you have time for"></div>
+      <p class="fine" id="time-note"></p>
+    </section>
+
+    <section class="panel" aria-labelledby="h-what">
+      <div class="step"><span class="stepn">4</span><h2 id="h-what">Which games are in?</h2></div>
+      <div class="sws">
+        <label class="sw"><input type="checkbox" id="f-wk"><span class="sw-ui"></span><span><b>Skip games that are weak at this count</b><small>Based on BoardGameGeek’s player-count votes</small></span></label>
+        <label class="sw"><input type="checkbox" id="f-hv"><span class="sw-ui"></span><span><b>Skip the heavy ones</b><small>Leaves out games rated 3.5 or more for complexity</small></span></label>
+        <label class="sw"><input type="checkbox" id="f-sh"><span class="sw-ui"></span><span><b>Shelf of shame only</b><small>Just the games with no plays logged on BGG</small></span></label>
+      </div>
+    </section>
+
+    <div id="find-err" class="errbox" hidden></div>
+    <button type="button" class="btn big" id="btn-find">Load the shelf</button>
+
+    <form class="panel" id="code-form">
+      <label for="code-in" class="lbl" style="margin:0">Got a code from a friend?</label>
+      <div class="row">
+        <input type="text" id="code-in" placeholder="e.g. K7PX 3MQA" autocomplete="off" autocapitalize="characters" spellcheck="false">
+        <button type="submit" class="btn ghost sm">Join</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- HOST: seed the bracket -->
+  <section class="view" id="v-build" hidden>
+    <button type="button" class="back" id="btn-back">← Change the shelf or filters</button>
+    <div class="hero" style="padding:0">
+      <p class="eyebrow" id="build-eyebrow"></p>
+      <h1 class="display">Seed the <span class="hl">field</span></h1>
+    </div>
+
+    <section class="panel">
+      <h2>What are we voting on?</h2>
+      <div class="modes">
+        <button type="button" class="mode" data-mode="two" aria-pressed="true"><b>Game type first</b><small>Vote on the kind of game, then on the games of that kind.</small></button>
+        <button type="button" class="mode" data-mode="one" aria-pressed="false"><b>Games only</b><small>Go straight to specific games, from the whole shelf or one type.</small></button>
+      </div>
+      <div class="lens-row" id="lens-row">
+        <p class="lbl">Group the games by</p>
+        <div class="seg" id="lens" role="group" aria-label="Group the games by"><button type="button" data-lens="play" aria-pressed="true">How it plays</button><button type="button" data-lens="theme" aria-pressed="false">Theme</button></div>
+      </div>
+      <div id="one-cat" hidden>
+        <label for="cat-sel" class="lbl">Which games</label>
+        <select id="cat-sel"></select>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="ph"><h2 id="pick-title">Contenders</h2></div>
+      <p class="fine" id="pick-note"></p>
+      <div class="pk" id="picker"></div>
+    </section>
+
+    <section class="panel">
+      <div>
+        <label for="host-name" class="lbl">Your name</label>
+        <input type="text" id="host-name" maxlength="24" placeholder="So friends know whose bracket this is" autocomplete="given-name">
+      </div>
+    </section>
+
+    <div id="create-err" class="errbox" hidden>
+      <p><b>The voting server didn't answer.</b> Friends can't join from their own phones until it does.</p>
+      <div class="row"><button type="button" class="btn sm" id="btn-retry">Try again</button><button type="button" class="btn ghost sm" id="btn-local">Pass one phone around instead</button></div>
+    </div>
+    <button type="button" class="btn big" id="btn-create">Create the bracket</button>
+  </section>
+
+  <!-- GUEST: join -->
+  <section class="view" id="v-join" hidden>
+    <div class="hero" style="padding:0">
+      <p class="eyebrow" id="join-host"></p>
+      <h1 class="display" id="join-title"></h1>
+      <p class="lede" id="join-where"></p>
+    </div>
+    <form class="panel" id="join-form">
+      <div>
+        <label for="join-name" class="lbl">Your name</label>
+        <input type="text" id="join-name" maxlength="24" placeholder="First name is fine" autocomplete="given-name" enterkeyhint="go">
+      </div>
+      <button type="submit" class="btn big" id="btn-join">Join the bracket</button>
+      <p class="fine" id="join-count"></p>
+      <p class="fine" id="join-an">Game Night Madness counts anonymous usage to improve the app, never names or usernames.</p>
+    </form>
+    <section class="panel">
+      <div class="ph"><h3>The field</h3></div>
+      <ol class="field" id="join-ents"></ol>
+    </section>
+  </section>
+
+  <!-- ROOM -->
+  <section class="view" id="v-room" hidden>
+    <div class="rh">
+      <p class="eyebrow" id="room-eyebrow"></p>
+      <h1 class="display" id="room-title"></h1>
+      <div class="rh-meta"><span id="room-meta"></span><span class="status" id="room-status" data-s="connecting"><i></i><span>Connecting…</span></span></div>
+    </div>
+    <div class="tabs" role="tablist" aria-label="Bracket sections">
+      <button type="button" class="tab" role="tab" id="t-vote" aria-controls="p-vote" aria-selected="true" data-tab="vote">Vote</button>
+      <button type="button" class="tab" role="tab" id="t-bracket" aria-controls="p-bracket" aria-selected="false" data-tab="bracket">Bracket</button>
+      <button type="button" class="tab" role="tab" id="t-invite" aria-controls="p-invite" aria-selected="false" data-tab="invite">Invite<span class="n" id="tab-n">1</span></button>
+    </div>
+
+    <div class="tabp" id="p-vote" role="tabpanel" aria-labelledby="t-vote">
+      <div class="tabp" id="vote-main"></div>
+      <div id="s2-wrap" hidden></div>
+    </div>
+
+    <div class="tabp" id="p-bracket" role="tabpanel" aria-labelledby="t-bracket" hidden>
+      <div id="bk-box" class="tabp"></div>
+      <p class="fine">Scroll sideways to see every round. Crossed-out names were knocked out; numbers are votes.</p>
+    </div>
+
+    <div class="tabp" id="p-invite" role="tabpanel" aria-labelledby="t-invite" hidden>
+      <section class="panel">
+        <div class="inv" id="inv-online-qr">
+          <div class="qr" id="inv-qr"></div>
+          <div style="display:flex;flex-direction:column;gap:6px;min-width:0">
+            <p class="eyebrow">Scan to vote</p>
+            <p class="code-big" id="inv-code"></p>
+            <p class="fine">No app or account needed. Anyone with the link can join and vote.</p>
+          </div>
+        </div>
+        <div class="row" id="inv-online-link">
+          <label for="inv-url" class="sr">Bracket link</label>
+          <input type="text" id="inv-url" readonly>
+          <button type="button" class="btn sm" id="btn-copy">Copy link</button>
+        </div>
+        <button type="button" class="btn ghost sm" id="btn-share" hidden>Share…</button>
+        <p class="warnbox" id="inv-file" hidden>This page is open as a file on this device, so the link won't work on anyone else's phone. Host it online (GitHub Pages works) and open it from there.</p>
+        <p class="warnbox" id="inv-local" hidden>This bracket lives on this phone only. Add everyone below and pass the phone around to vote.</p>
+      </section>
+      <section class="panel">
+        <div class="ph"><h3>Who's voting</h3><span class="pill" id="inv-count">0</span></div>
+        <ul class="people" id="inv-people"></ul>
+      </section>
+      <form class="panel" id="proxy-form">
+        <div>
+          <label for="proxy-name" class="lbl">Someone at the table without a phone?</label>
+          <p class="fine" style="margin-bottom:10px">Add them here and they'll vote on this phone. You'll get a "Voting as" switch on the Vote tab.</p>
+          <div class="row">
+            <input type="text" id="proxy-name" maxlength="24" placeholder="Their name" autocomplete="off">
+            <button type="submit" class="btn ghost sm">Add voter</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <section class="view" id="v-loading" hidden>
+    <div class="panel"><p class="loading"><span class="spin"></span><span id="loading-msg">Loading the bracket…</span></p></div>
+  </section>
+
+  <section class="view" id="v-missing" hidden>
+    <div class="hero" style="padding:0">
+      <p class="eyebrow">Hmm</p>
+      <h1 class="display">This bracket is <span class="hl">back in the box</span></h1>
+      <p class="lede">Brackets disappear about 12 hours after they're made, or the link may have been cut off when it was shared. Ask whoever sent it for a fresh link, or start your own.</p>
+    </div>
+    <a class="btn big" href="./" data-ev="start_own" data-from="missing">Start a new bracket</a>
+  </section>
+
+  <footer class="foot">
+    <a class="bgg-badge" href="https://boardgamegeek.com" target="_blank" rel="noopener"><img src="powered-by-bgg.png" alt="Powered by BGG"><span>Powered by BGG</span></a>
+    <p>Game data comes from <a href="https://boardgamegeek.com" target="_blank" rel="noopener">BoardGameGeek</a>. Votes sync through <a href="https://ntfy.sh" target="_blank" rel="noopener">ntfy.sh</a>, and brackets disappear about 12 hours after they’re made.<span id="foot-an"> We count anonymous usage to improve the app, never names or usernames.</span></p>
+  </footer>
+</main>
+
+<div class="flip" id="flip" hidden role="dialog" aria-modal="true" aria-labelledby="flip-title">
+  <div class="flip-card">
+    <p class="eyebrow" id="flip-count">Tiebreaker</p>
+    <h2 id="flip-title"></h2>
+    <p id="flip-score"></p>
+    <div class="flip-calls"><div class="flip-call" id="flip-h"></div><div class="flip-call" id="flip-t"></div></div>
+    <div class="flip-stage" aria-hidden="true"><span class="coin-shadow" id="flip-shadow"></span><span class="coin-lift" id="flip-lift"></span></div>
+    <p class="flip-result" id="flip-result" aria-live="polite"></p>
+    <div class="flip-actions"><button type="button" class="btn sm" id="flip-next" hidden>Next</button><button type="button" class="linkbtn" id="flip-skip">Skip</button></div>
+  </div>
+</div>
+<div class="lockbar" id="lockbar" hidden><div class="lockbar-in"><button type="button" class="btn" id="lock-btn">Lock in my picks</button></div></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<canvas id="fx" aria-hidden="true"></canvas>
+<noscript><p class="wrap">Game Night Madness needs JavaScript turned on.</p></noscript>

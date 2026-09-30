@@ -1,0 +1,44 @@
+/* ---------- Game Night additions ---------- */
+.brand{font-size:clamp(18px,5.6vw,23px)}
+.banner{margin:0 0 16px;padding:12px 14px;border-radius:12px;background:var(--accent-soft);color:var(--ink);font-size:14.5px;line-height:1.45}
+
+/* player and time chips */
+.chips.c7{grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.chips.c6{grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}
+.chips.c7 button{min-height:52px}
+.chips small{letter-spacing:.06em}
+
+/* shelf source */
+.shelf-src{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;background:var(--ok-soft);min-height:58px}
+.shelf-src svg{flex:none;width:24px;height:24px;color:var(--ok)}
+.shelf-src b{display:block;font-weight:700}
+.shelf-src small{display:block;color:var(--muted);font-size:13.5px}
+
+/* thumbnails (BGG box art, with a letter underneath while it loads or if it's missing) */
+.th{position:relative;flex:none;width:44px;height:44px;border-radius:10px;background:var(--sunk);overflow:hidden;display:grid;place-items:center;box-shadow:inset 0 0 0 1px var(--line-2)}
+.th::before{content:attr(data-l);font:800 20px/1 var(--display);color:var(--muted);text-transform:uppercase}
+.th img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.pk-row .th{width:40px;height:40px;border-radius:8px}
+.field .th{width:34px;height:34px;border-radius:8px}
+.field .th::before{font-size:16px}
+.mu-o .th{width:48px;height:48px}
+.spots .th{width:36px;height:36px;border-radius:8px}
+.spots li>span:first-of-type{display:flex;align-items:center;gap:12px;min-width:0}
+
+/* champion art */
+.champ-head{display:flex;align-items:center;gap:14px}
+.champ-art{position:relative;flex:none;width:72px;height:72px;border-radius:12px;overflow:hidden;background:rgba(0,0,0,.08);box-shadow:0 8px 20px -10px rgba(0,0,0,.5)}
+.champ-n.long{font-size:clamp(38px,10.5vw,66px);line-height:.9}
+.champ-art img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+
+/* lens switch */
+.lens-row{display:flex;flex-direction:column;gap:8px}
+.lens-row .lbl{margin:0}
+
+/* footer + BGG badge */
+.foot{margin-top:28px;display:flex;flex-direction:column;gap:10px;align-items:flex-start}
+.foot p{margin:0}
+.bgg-badge{display:inline-flex;align-items:center;gap:8px;text-decoration:none;color:var(--ink-2);font:700 13px/1 var(--body);letter-spacing:.04em;padding:8px 12px;border-radius:999px;border:1.5px solid var(--line);background:var(--card)}
+.bgg-badge img{height:28px;width:auto;display:block}
+.bgg-badge img+span{display:none}
+.bgg-badge:has(img){padding:4px 8px;border:0;background:transparent}
