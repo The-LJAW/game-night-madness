@@ -30,7 +30,7 @@ const server = http.createServer((req, res) => {
   if (p === '/') p = '/index.html';
   const f = path.join(DIST, p);
   if (!f.startsWith(DIST) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { res.writeHead(404); res.end('nope'); return; }
-  res.writeHead(200, {'Content-Type': f.endsWith('.html') ? 'text/html; charset=utf-8' : 'application/octet-stream'});
+  res.writeHead(200, {'Content-Type': f.endsWith('.html') ? 'text/html; charset=utf-8' : f.endsWith('.png') ? 'image/png' : 'application/octet-stream'});
   res.end(fs.readFileSync(f));
 });
 await new Promise(r => server.listen(8765, r));
@@ -404,7 +404,31 @@ await t('helper can’t be reached: the username box stays, and loading explains
   await ctx.close();
 });
 
-/* ============ 6. look: narrow phone + dark mode ============ */
+/* ============ 6. BGG's required logo ============ */
+await t('Powered by BGG logo shows, links to BGG, legible, on white in dark mode too', async () => {
+  for (const colorScheme of ['light', 'dark']) {
+    const {ctx, page} = await phone({colorScheme});
+    await page.goto(BASE);
+    const img = page.locator('.bgg-badge img');
+    await img.waitFor();
+    await page.waitForFunction(() => { const i = document.querySelector('.bgg-badge img'); return i && i.complete && i.naturalWidth > 0; });
+    const info = await page.evaluate(() => {
+      const a = document.querySelector('.bgg-badge'), i = a.querySelector('img'), r = i.getBoundingClientRect();
+      return {href: a.href, target: a.target, w: i.naturalWidth, h: i.naturalHeight, shownH: r.height, shownW: r.width,
+        textHidden: getComputedStyle(a.querySelector('span')).display === 'none', bg: getComputedStyle(a).backgroundColor};
+    });
+    assert.equal(info.href, 'https://boardgamegeek.com/');
+    assert.equal(info.target, '_blank');
+    assert.deepEqual([info.w, info.h], [900, 264], 'the official file, unchanged');
+    assert.equal(Math.round(info.shownH), 56, 'shown 56px tall, so its lettering is about 13px high');
+    assert.ok(info.textHidden, 'the text stand-in is hidden once the logo loads');
+    assert.equal(info.bg, 'rgb(255, 255, 255)', 'white behind the navy lettering in ' + colorScheme + ' mode');
+    if (SHOTS) await page.locator('.foot').screenshot({path: path.join(SHOT_DIR, '15-footer-' + colorScheme + '.png')});
+    await ctx.close();
+  }
+});
+
+/* ============ 7. look: narrow phone + dark mode ============ */
 if (SHOTS) await t('screenshots: 360px wide and dark mode', async () => {
   const {ctx, page} = await phone({viewport: {width: 360, height: 740}, colorScheme: 'dark'});
   await page.goto(BASE);

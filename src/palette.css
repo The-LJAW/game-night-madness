@@ -3,6 +3,7 @@
   --accent:#5B3FD0;--accent-press:#4A30B5;--accent-ink:#FFFFFF;--accent-soft:#E8E2FB;--accent-text:#5236C4;
   --gold:#F2B01E;--gold-ink:#2A1E00;--gold-soft:#FCEFC6;
   --ok:#1E7F55;--ok-soft:#D8EEE2;
+  --logo-ground:#FFFFFF; /* BGG's logo has navy text on a clear background, so it always sits on white */
   --shadow:0 1px 0 rgba(28,26,46,.05),0 10px 24px -16px rgba(28,26,46,.35);
   --display:"Big Shoulders Display","Oswald","Arial Narrow",Impact,sans-serif;
   --body:"Barlow","Helvetica Neue",Arial,system-ui,sans-serif;

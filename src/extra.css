@@ -39,6 +39,9 @@
 .foot{margin-top:28px;display:flex;flex-direction:column;gap:10px;align-items:flex-start}
 .foot p{margin:0}
 .bgg-badge{display:inline-flex;align-items:center;gap:8px;text-decoration:none;color:var(--ink-2);font:700 13px/1 var(--body);letter-spacing:.04em;padding:8px 12px;border-radius:999px;border:1.5px solid var(--line);background:var(--card)}
-.bgg-badge img{height:28px;width:auto;display:block}
+/* BGG asks for the logo "sized so that the text remains easily legible": at 56px tall its lettering is about 13px high.
+   The file's own transparent margins give it clear space inside the white badge. */
+.bgg-badge img{height:56px;width:auto;max-width:100%;display:block}
 .bgg-badge img+span{display:none}
-.bgg-badge:has(img){padding:4px 8px;border:0;background:transparent}
+.bgg-badge:has(img){padding:0;border:1px solid var(--line-2);border-radius:12px;background:var(--logo-ground);overflow:hidden}
+.bgg-badge:has(img):hover{border-color:var(--line)}

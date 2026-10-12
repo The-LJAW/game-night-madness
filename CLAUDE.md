@@ -33,4 +33,4 @@ node test/app.test.mjs          # add --shots for screenshots in test/shots/
 - The storage prefix is `gn.`. Dinner Madness uses `dm.` on the same origin (`the-ljaw.github.io`).
 - The ntfy channel prefix is `gamenightmadness-`.
 - Keep the Dinner Madness engine (`derive`, `closeRound`, `coinSide`, the channels) in step with that repo when fixing bugs there.
-- BGG rules: send the token only from the helper; show the "Powered by BGG" logo (`powered-by-bgg.png`, linked to BGG); cache; keep requests minimal. A monetized version needs a BGG commercial license.
+- BGG rules: send the token only from the helper; show the "Powered by BGG" logo (`powered-by-bgg.png`, BGG's official 900×264 file with transparent margins: keep it unedited, linked to BGG, 56px tall on the white `--logo-ground` badge so it reads in dark mode; a test checks this); cache; keep requests minimal. The app is registered with BGG as non-commercial (approved Oct 5, 2026); a monetized version needs a BGG commercial license.
