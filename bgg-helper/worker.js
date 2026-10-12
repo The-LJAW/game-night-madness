@@ -12,6 +12,8 @@
  *   /collection?username=NAME   -> BGG XML for NAME's owned board games (no expansions)
  *   /thing?id=1,2,3             -> BGG XML details (with stats) for up to 20 game ids
  *   /                           -> status page: running, token set or not, cache, allowed sites
+ *   /check                      -> asks BGG for one game with the token and says whether BGG accepted it
+ *                                  (the result is reused for 5 minutes, or 1 minute after a failure)
  *
  * Settings (Cloudflare dashboard -> the Worker -> Settings -> Variables and Secrets):
  *   BGG_TOKEN        Secret. The token from boardgamegeek.com/applications. Required.
@@ -23,6 +25,50 @@
 
 const BGG = 'https://boardgamegeek.com/xmlapi2/';
 const TTL = {collection: 30 * 60, thing: 7 * 24 * 3600};
+const CHECK_GAME = 13; // CATAN: a small game that will always exist, for /check
+const CHECK_TTL = {ok: 300, fail: 60};
+const MEM = new Map(); // /check results, per running copy of the helper
+
+const bggHeaders = token => ({
+  'Authorization': 'Bearer ' + token,
+  'Accept': 'application/xml',
+  'User-Agent': 'GameNightMadness/1.0 (group game picker)'
+});
+
+async function tokenTag(token) {
+  const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
+  return Array.from(new Uint8Array(d).slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/* Ask BGG for one game with the token, and explain the result in plain words. Never shows the token. */
+async function runCheck(token) {
+  const said = s => s.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
+  let up, body = '';
+  try {
+    up = await fetch(BGG + 'thing?id=' + CHECK_GAME, {headers: bggHeaders(token)});
+    body = await up.text();
+  } catch (e) {
+    return {ok: false, lines: ['BGG check: Cloudflare could not reach BoardGameGeek. Try again in a few minutes.']};
+  }
+  const name = (/<name[^>]*type="primary"[^>]*value="([^"]*)"/.exec(body) || [])[1];
+  if (up.status === 200 && name) {
+    return {ok: true, lines: ['BGG check: OK. BoardGameGeek accepted the token and sent back ' + name + '.']};
+  }
+  if (up.status === 401 || up.status === 403) {
+    return {ok: false, lines: [
+      'BGG check: BoardGameGeek refused the request (HTTP ' + up.status + ').',
+      'Fix: copy the token again from boardgamegeek.com/applications, then replace BGG_TOKEN under Settings > Variables and Secrets and Deploy.',
+      'BGG said: ' + (said(body) || '(nothing)')
+    ]};
+  }
+  if (up.status === 429 || up.status >= 500) {
+    return {ok: false, lines: ['BGG check: BoardGameGeek is busy right now (HTTP ' + up.status + '). Try again in a few minutes.']};
+  }
+  return {ok: false, lines: [
+    'BGG check: BoardGameGeek answered (HTTP ' + up.status + '), but not with game data.',
+    'BGG said: ' + (said(body) || '(nothing)')
+  ]};
+}
 
 export default {
   async fetch(req, env, ctx) {
@@ -30,6 +76,7 @@ export default {
     const allowed = String(env.ALLOWED_ORIGINS || 'https://the-ljaw.github.io')
       .split(',').map(s => s.trim().replace(/\/+$/, '')).filter(Boolean);
     const origin = req.headers.get('Origin') || '';
+    const token = String(env.BGG_TOKEN || '').trim();
     const cors = {
       'Access-Control-Allow-Origin': allowed.includes(origin) ? origin : allowed[0],
       'Access-Control-Allow-Methods': 'GET, OPTIONS',
@@ -45,16 +92,42 @@ export default {
     if (req.method !== 'GET') return reply('Only GET is allowed.', 405);
     if (url.pathname === '/' || url.pathname === '') {
       // Status page: open the helper's address in a browser to check the setup. Never shows the token.
+      // The app reads the "BGG token: set" line to decide whether to offer BGG shelves; keep that wording.
       return reply([
         'Game Night Madness BGG helper: running',
-        'BGG token: ' + (env.BGG_TOKEN ? 'set' : 'not set yet (add BGG_TOKEN as a Secret under Settings > Variables and Secrets)'),
+        'BGG token: ' + (token ? 'set' : 'not set yet (add BGG_TOKEN as a Secret under Settings > Variables and Secrets)'),
         'Cache: ' + (env.CACHE ? 'KV namespace bound as CACHE' : 'no KV bound (bind a KV namespace as CACHE so answers are reused)'),
-        'Allowed sites: ' + allowed.join(', ')
+        'Allowed sites: ' + allowed.join(', '),
+        'To test the token with BoardGameGeek, open /check on this address.'
       ].join('\n') + '\n', 200);
+    }
+    if (url.pathname === '/check') {
+      if (!token) return reply('BGG check: no token yet. Add BGG_TOKEN as a Secret under Settings > Variables and Secrets, then Deploy.\n', 200);
+      const key = 'v1:check:' + await tokenTag(token);
+      let res = MEM.get(key);
+      if (!res || res.exp < Date.now()) {
+        res = null;
+        try { if (env.CACHE) res = JSON.parse(await env.CACHE.get(key) || 'null'); } catch (e) { res = null; }
+        if (!res) {
+          const r = await runCheck(token);
+          res = {ok: r.ok, lines: r.lines, at: Date.now()};
+          const ttl = r.ok ? CHECK_TTL.ok : CHECK_TTL.fail;
+          if (env.CACHE) {
+            try { ctx.waitUntil(Promise.resolve(env.CACHE.put(key, JSON.stringify(res), {expirationTtl: ttl})).catch(() => {})); } catch (e) {}
+          }
+          res.exp = Date.now() + ttl * 1000;
+        }
+        if (!res.exp) res.exp = Date.now() + 60 * 1000;
+        MEM.set(key, res);
+      }
+      const lines = res.lines.slice();
+      if (/\s/.test(token)) lines.push('Note: the saved token has a space or line break inside it. Paste it again as one unbroken line.');
+      lines.push('Checked: ' + new Date(res.at).toISOString().slice(0, 16).replace('T', ' ') + ' UTC');
+      return reply(lines.join('\n') + '\n', 200);
     }
     // Browsers always send Origin on these cross-site calls; anything else isn't the app.
     if (!allowed.includes(origin)) return reply('This site is not allowed to use the BGG helper.', 403);
-    if (!env.BGG_TOKEN) return reply('The BGG token is not set on this helper yet.', 503, {'X-GNM-Error': 'no-token'});
+    if (!token) return reply('The BGG token is not set on this helper yet.', 503, {'X-GNM-Error': 'no-token'});
 
     let kind, target;
     if (url.pathname === '/collection') {
@@ -90,11 +163,7 @@ export default {
     // 2) Ask BoardGameGeek
     let up;
     try {
-      up = await fetch(target, {headers: {
-        'Authorization': 'Bearer ' + env.BGG_TOKEN,
-        'Accept': 'application/xml',
-        'User-Agent': 'GameNightMadness/1.0 (group game picker)'
-      }});
+      up = await fetch(target, {headers: bggHeaders(token)});
     } catch (e) {
       return reply('Could not reach BoardGameGeek.', 502);
     }

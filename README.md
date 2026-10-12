@@ -45,8 +45,8 @@ BoardGameGeek requires every app that reads its data to be registered and to sen
    - **Website:** https://the-ljaw.github.io/game-night-madness/
    - **What it does:** A free web app that turns a user's owned BGG collection into a voting bracket, so a group can pick a game to play. It reads one user's collection (owned games) and game details (categories, mechanics, weight, player-count poll). Results are cached (collections for 30 minutes, game details for 7 days), details are requested 20 at a time about a second apart, and the app shows the "Powered by BGG" logo linking to BGG.
    - **Commercial or not:** non-commercial, for now. BGG requires a commercial license for any app that earns money (ads, affiliate links, paid features). It's free until 100 paying users or 1,000 ad-supported users.
-3. BGG reviews each application; other developers report about 1–2 business days. Once it's approved, create a token on the same page. Keep it private: it goes straight into Cloudflare (step 2.6) and nowhere else, not in this repository or a chat.
-4. Download the **Powered by BGG** logo from https://boardgamegeek.com/using_the_xml_api and add it to this repository as `powered-by-bgg.png`. BGG requires the logo on public apps, linked to BGG. The footer shows it; a text badge stands in until the file is there.
+3. BGG reviews each application. This one was approved on Oct 5, 2026, as non-commercial (no fees). Once it's approved, create a token on the same page. Keep it private: it goes straight into Cloudflare (step 2.6) and nowhere else, not in this repository or a chat.
+4. Download the **Powered by BGG** logo: on https://boardgamegeek.com/using_the_xml_api, the "Public facing Applications" section links to the logo files ("any of the files found here"). Add one to this repository as `powered-by-bgg.png`. BGG requires the logo on public apps, linked to BGG, and sized so its text is easy to read. The footer shows it; a text badge stands in until the file is there, which doesn't meet the requirement.
 
 ### 2. Put the helper on Cloudflare (free, about 10 minutes)
 
@@ -58,6 +58,9 @@ You can do steps 1–5 while BGG reviews the application.
 4. Create a KV namespace for the cache: **Storage & Databases → KV** (Workers KV) → **Create**, and name it `gnm-bgg-cache`. Then open the Worker → **Bindings** → **Add binding** → **KV namespace**, set the variable name to `CACHE`, pick `gnm-bgg-cache`, and click **Add binding**. Cloudflare's built-in cache only works on your own domain, so KV is what lets the helper reuse answers on a `workers.dev` address.
 5. Open the Worker's address (something like `https://gnm-bgg.your-subdomain.workers.dev`). It shows a status page: `running`, `BGG token: not set yet`, `Cache: KV namespace bound as CACHE`.
 6. When BGG has approved the app: in the Worker's **Settings → Variables and Secrets**, click **Add**, choose type **Secret**, name it `BGG_TOKEN`, paste the token as the value, and click **Deploy**. Reload the status page; it should say `BGG token: set`.
+7. Open `/check` on the helper's address (https://gnm-bgg.levi-joseph-andrew-wilson.workers.dev/check). It asks BGG for one game with the token and says in plain words whether BGG accepted it, and if not, what to fix. The answer is reused for 5 minutes (1 minute after a failure), so checking it often doesn't use up BGG requests.
+
+After any change to `bgg-helper/worker.js`, paste it into the Worker again (**Edit code**, replace everything, **Deploy**). The token and the cache stay as they are.
 
 The helper only answers `https://the-ljaw.github.io`. If the app ever moves to its own domain, add a Text variable `ALLOWED_ORIGINS` with the new address (comma-separate several).
 

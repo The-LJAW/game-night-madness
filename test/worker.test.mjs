@@ -133,4 +133,84 @@ await t('uses KV when a CACHE namespace is bound', async () => {
   const r = await get('/thing?id=13', {Origin: ORIGIN}, envKV);
   assert.equal(r.headers.get('X-GNM-Cache'), 'hit'); assert.equal(calls.length, 1);
 });
+
+/* ---------- /check: does BGG accept the token? ---------- */
+const CATAN = '<?xml version="1.0" encoding="utf-8"?><items termsofuse="https://boardgamegeek.com/xmlapi/termsofuse"><item type="boardgame" id="13"><name type="primary" sortindex="1" value="CATAN"/><name type="alternate" sortindex="1" value="Settlers"/></item></items>';
+await t('status page points to /check and keeps the line the app reads', async () => {
+  const txt = await (await get('/', {}, {BGG_TOKEN: 'abc'})).text();
+  assert.match(txt, /open \/check/);
+  assert.equal((/BGG token: (set|not set)/.exec(txt) || [])[1], 'set', 'the app reads the first "BGG token:" line');
+  const none = await (await get('/', {}, {BGG_TOKEN: '   '})).text();
+  assert.equal((/BGG token: (set|not set)/.exec(none) || [])[1], 'not set', 'a token of only spaces counts as not set');
+});
+await t('check: no token yet', async () => {
+  calls.length = 0;
+  const txt = await (await get('/check', {}, {})).text();
+  assert.match(txt, /no token yet/); assert.equal(calls.length, 0);
+});
+await t('check: BGG accepts the token (no Origin needed, token trimmed, result reused)', async () => {
+  calls.length = 0;
+  nextReply = {status: 200, body: CATAN};
+  const e = {BGG_TOKEN: '  tokGood123 \n'};
+  const r = await get('/check', {}, e);
+  assert.equal(r.status, 200);
+  const txt = await r.text();
+  assert.match(txt, /^BGG check: OK\. BoardGameGeek accepted the token and sent back CATAN\./);
+  assert.match(txt, /Checked: \d{4}-\d\d-\d\d \d\d:\d\d UTC/);
+  assert.doesNotMatch(txt, /tokGood123/);
+  assert.doesNotMatch(txt, /Note:/, 'spaces only around the token are fine');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://boardgamegeek.com/xmlapi2/thing?id=13');
+  assert.equal(calls[0].auth, 'Bearer tokGood123');
+  await get('/check', {}, e);
+  assert.equal(calls.length, 1, 'a second look within 5 minutes reuses the result');
+});
+await t('check: a refused token says how to fix it, and a new token is checked right away', async () => {
+  calls.length = 0;
+  nextReply = {status: 401, body: '<html><body><h1>401 Unauthorized</h1></body></html>'};
+  const txt = await (await get('/check', {}, {BGG_TOKEN: 'tokBad'})).text();
+  assert.match(txt, /refused the request \(HTTP 401\)/);
+  assert.match(txt, /Fix: copy the token again/);
+  assert.match(txt, /BGG said: 401 Unauthorized/);
+  nextReply = {status: 200, body: CATAN};
+  const again = await (await get('/check', {}, {BGG_TOKEN: 'tokFixed'})).text();
+  assert.match(again, /OK\./); assert.equal(calls.length, 2);
+});
+await t('check: busy BGG, odd answers, and unreachable BGG', async () => {
+  nextReply = {status: 503, body: 'Service Unavailable'};
+  assert.match(await (await get('/check', {}, {BGG_TOKEN: 'tokBusy'})).text(), /busy right now \(HTTP 503\)/);
+  nextReply = {status: 200, body: '<html><title>Just a moment...</title><body>Enable JavaScript and cookies to continue</body></html>'};
+  const odd = await (await get('/check', {}, {BGG_TOKEN: 'tokOdd'})).text();
+  assert.match(odd, /answered \(HTTP 200\), but not with game data/);
+  assert.match(odd, /BGG said: Just a moment\.\.\. Enable JavaScript and cookies to continue/);
+  const saved = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error('network down'); };
+  try { assert.match(await (await get('/check', {}, {BGG_TOKEN: 'tokNet'})).text(), /could not reach BoardGameGeek/); }
+  finally { globalThis.fetch = saved; nextReply = {status: 200, body: CATAN}; }
+});
+await t('check: a token with a space inside gets a note', async () => {
+  const txt = await (await get('/check', {}, {BGG_TOKEN: 'tok part2'})).text();
+  assert.match(txt, /Note: the saved token has a space or line break inside it/);
+});
+await t('check: results are kept in KV, 5 minutes after success and 1 minute after failure', async () => {
+  const kv = new Map(), ttls = [];
+  const envKV = tok => ({BGG_TOKEN: tok, CACHE: {get: async k => kv.get(k) || null, put: async (k, v, o) => { kv.set(k, v); ttls.push(o.expirationTtl); }}});
+  nextReply = {status: 200, body: CATAN};
+  await get('/check', {}, envKV('tokKV1'));
+  nextReply = {status: 403, body: 'Forbidden'};
+  await get('/check', {}, envKV('tokKV2'));
+  await Promise.all(waits);
+  assert.deepEqual(ttls, [300, 60]);
+  const stored = [...kv.values()].map(v => JSON.parse(v));
+  assert.ok(stored.every(s => !JSON.stringify(s).includes('tokKV')), 'the token is never stored');
+  nextReply = {status: 200, body: CATAN};
+});
+await t('main lookups send the trimmed token', async () => {
+  calls.length = 0; edge.clear();
+  nextReply = {status: 200, body: '<items><item type="boardgame" id="9209"/></items>'};
+  await get('/thing?id=9209', {Origin: ORIGIN}, {BGG_TOKEN: ' tokTrim \n', ALLOWED_ORIGINS: ORIGIN});
+  assert.equal(calls[0].auth, 'Bearer tokTrim');
+  const r = await get('/thing?id=9209', {Origin: ORIGIN}, {BGG_TOKEN: '  ', ALLOWED_ORIGINS: ORIGIN});
+  assert.equal(r.status, 503, 'a blank token counts as not set');
+});
 console.log(`\n${passed} worker tests passed`);
