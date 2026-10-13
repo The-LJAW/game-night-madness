@@ -30,7 +30,8 @@ const server = http.createServer((req, res) => {
   if (p === '/') p = '/index.html';
   const f = path.join(DIST, p);
   if (!f.startsWith(DIST) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { res.writeHead(404); res.end('nope'); return; }
-  res.writeHead(200, {'Content-Type': f.endsWith('.html') ? 'text/html; charset=utf-8' : f.endsWith('.png') ? 'image/png' : 'application/octet-stream'});
+  const TYPES = {'.html': 'text/html; charset=utf-8', '.png': 'image/png', '.js': 'text/javascript', '.webmanifest': 'application/manifest+json'};
+  res.writeHead(200, {'Content-Type': TYPES[path.extname(f)] || 'application/octet-stream'});
   res.end(fs.readFileSync(f));
 });
 await new Promise(r => server.listen(8765, r));
@@ -102,7 +103,8 @@ async function wire(ctx, cfg) {
 const browser = await chromium.launch();
 const errors = [];
 async function phone(opts) {
-  const ctx = await browser.newContext(Object.assign({viewport: {width: 390, height: 844}, deviceScaleFactor: 2, hasTouch: true, isMobile: true}, opts || {}));
+  // Service workers are blocked unless a test asks for them, so they can't get between the page and the fakes.
+  const ctx = await browser.newContext(Object.assign({viewport: {width: 390, height: 844}, deviceScaleFactor: 2, hasTouch: true, isMobile: true, serviceWorkers: 'block'}, opts || {}));
   await wire(ctx, opts && opts.cfg);
   const page = await ctx.newPage();
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
@@ -320,6 +322,7 @@ await t('stage 2: organizer seeds that type’s games, everyone plays it out', a
   await waitTitle(H, /Game on/); await waitTitle(Gp, /Game on/);
   const champH = await H.textContent('.champ-n'), champG = await Gp.textContent('.champ-n');
   assert.equal(champH, champG);
+  assert.equal(await Gp.locator('#vote-main .install-slot[data-where="winner"]').count(), 1, 'the winner screen has a place for the install card');
   const how = await Gp.getAttribute('[data-wa="how_to_play"]', 'href');
   assert.ok(how.startsWith('https://www.youtube.com/results?search_query=how%20to%20play%20'));
   assert.match(await Gp.getAttribute('[data-wa="bgg"]', 'href'), /^https:\/\/boardgamegeek\.com\/boardgame\/\d+$/);
@@ -428,7 +431,96 @@ await t('Powered by BGG logo shows, links to BGG, legible, on white in dark mode
   }
 });
 
-/* ============ 7. look: narrow phone + dark mode ============ */
+/* ============ 7. installing it on a phone ============ */
+const IPHONE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1';
+const ANDROID_FIREFOX_UA = 'Mozilla/5.0 (Android 15; Mobile; rv:143.0) Gecko/143.0 Firefox/143.0';
+await t('installable: Chrome finds the manifest, icons and service worker, with no installability errors', async () => {
+  const dir = fs.mkdtempSync(path.join(process.env.TMPDIR || '/tmp', 'gnm-pwa-'));
+  const ctx = await chromium.launchPersistentContext(dir, {viewport: {width: 390, height: 844}}); // a normal (not incognito) profile, as on a phone
+  try {
+    await wire(ctx);
+    const page = ctx.pages()[0] || await ctx.newPage();
+    page.on('pageerror', e => errors.push('pageerror: ' + e.message));
+    await page.goto(BASE);
+    const scope = await page.evaluate(async () => (await navigator.serviceWorker.ready).scope);
+    assert.equal(scope, BASE);
+    const cdp = await ctx.newCDPSession(page);
+    const man = await cdp.send('Page.getAppManifest');
+    assert.deepEqual(man.errors, [], 'manifest parses cleanly');
+    const data = JSON.parse(man.data);
+    assert.equal(data.name, 'Game Night Madness'); assert.equal(data.short_name, 'Game Night'); assert.equal(data.display, 'standalone');
+    const inst = await cdp.send('Page.getInstallabilityErrors');
+    assert.deepEqual(inst.installabilityErrors, [], JSON.stringify(inst.installabilityErrors));
+    const icons = await page.evaluate(async () => {
+      const load = src => new Promise(res => { const i = new Image(); i.onload = () => res([src, i.naturalWidth, i.naturalHeight]); i.onerror = () => res([src, 0, 0]); i.src = src; });
+      const m = await (await fetch('manifest.webmanifest')).json();
+      const apple = document.querySelector('link[rel="apple-touch-icon"]').getAttribute('href');
+      return Promise.all(m.icons.map(i => i.src).concat(apple).map(load));
+    });
+    assert.deepEqual(icons, [['icons/icon-192.png', 192, 192], ['icons/icon-512.png', 512, 512], ['icons/icon-maskable-512.png', 512, 512], ['icons/apple-touch-icon.png', 180, 180]]);
+    // offline, the saved copy of the app still opens
+    await page.reload(); await page.waitForTimeout(300);
+    await ctx.setOffline(true);
+    await page.goto(BASE + '?b=offline1');
+    assert.equal(await page.title(), 'Game Night Madness');
+    await ctx.setOffline(false);
+  } finally { await ctx.close(); fs.rmSync(dir, {recursive: true, force: true}); }
+});
+await t('install card: Install button when the browser offers one, then out of the way', async () => {
+  const {ctx, page} = await phone();
+  await page.goto(BASE);
+  assert.equal(await page.locator('.install').count(), 0, 'no card on a desktop browser without an install offer');
+  await page.evaluate(() => {
+    const e = new Event('beforeinstallprompt', {cancelable: true});
+    e.prompt = () => { window.__prompted = (window.__prompted || 0) + 1; return Promise.resolve(); };
+    e.userChoice = Promise.resolve({outcome: 'accepted'});
+    window.dispatchEvent(e);
+  });
+  const card = page.locator('.install-slot[data-where="home"] .install');
+  await card.waitFor();
+  assert.match(await card.textContent(), /Keep Game Night Madness on your phone/);
+  if (SHOTS) await card.screenshot({path: path.join(SHOT_DIR, '16-install-card-prompt.png')});
+  await card.locator('[data-install="go"]').click();
+  await page.waitForFunction(() => window.__prompted === 1);
+  await page.waitForFunction(() => !document.querySelector('.install'));
+  await page.evaluate(() => window.dispatchEvent(new Event('appinstalled')));
+  await page.waitForFunction(() => /Installed\. Find Game Night Madness on your home screen\./.test(document.querySelector('#toast').textContent));
+  await page.reload();
+  await page.evaluate(() => { const e = new Event('beforeinstallprompt', {cancelable: true}); e.prompt = () => Promise.resolve(); e.userChoice = Promise.resolve({outcome: 'accepted'}); window.dispatchEvent(e); });
+  await page.waitForTimeout(150);
+  assert.equal(await page.locator('.install').count(), 0, 'stays away once installed');
+  await ctx.close();
+});
+await t('install card: iPhone gets the Share tip; Not now hides it; none inside the installed app', async () => {
+  for (const colorScheme of ['light', 'dark']) {
+    const {ctx, page} = await phone({userAgent: IPHONE_UA, colorScheme});
+    await page.goto(BASE);
+    const card = page.locator('.install-slot[data-where="home"] .install');
+    await card.waitFor();
+    assert.match(await card.textContent(), /In Safari, tap Share \(under ••• on newer iPhones\), then Add to Home Screen\./);
+    assert.equal(await card.locator('[data-install="go"]').count(), 0, 'no install button on iPhone');
+    if (SHOTS) await card.screenshot({path: path.join(SHOT_DIR, '17-install-card-iphone-' + colorScheme + '.png')});
+    if (colorScheme === 'light') {
+      await card.locator('[data-install="later"]').click();
+      await page.waitForFunction(() => !document.querySelector('.install'));
+      await page.reload(); await page.waitForTimeout(150);
+      assert.equal(await page.locator('.install').count(), 0, '"Not now" is remembered');
+    }
+    await ctx.close();
+  }
+  const app = await phone({userAgent: IPHONE_UA});
+  await app.ctx.addInitScript(() => { Object.defineProperty(navigator, 'standalone', {get: () => true}); });
+  await app.page.goto(BASE); await app.page.waitForTimeout(150);
+  assert.equal(await app.page.locator('.install').count(), 0, 'not shown inside the installed app');
+  await app.ctx.close();
+  const fx = await phone({userAgent: ANDROID_FIREFOX_UA});
+  await fx.page.goto(BASE);
+  await fx.page.locator('.install').waitFor();
+  assert.match(await fx.page.locator('.install').textContent(), /Open your browser’s menu \(⋮\), then tap Add to Home screen or Install app\./);
+  await fx.ctx.close();
+});
+
+/* ============ 8. look: narrow phone + dark mode ============ */
 if (SHOTS) await t('screenshots: 360px wide and dark mode', async () => {
   const {ctx, page} = await phone({viewport: {width: 360, height: 740}, colorScheme: 'dark'});
   await page.goto(BASE);

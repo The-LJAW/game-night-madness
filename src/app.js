@@ -1106,6 +1106,7 @@ function renderVote(S, st, isHost) {
     const box = $('#vote-main');
     box.innerHTML = !st.started ? lobbyHTML(S, st, isHost) : !st.done ? votingHTML(S, st, isHost) : doneHTML(S, st, isHost);
     const lq = $('#lobby-qr'); if (lq) lq.innerHTML = R.qr || (R.qr = qrSVG(shareUrl('qr')));
+    if ($('.install-slot', box)) renderInstall();
     if (st.done && st.def.kind === 'game') {
       const fk = R.code + '.' + S.current;
       if (!R.fired[fk]) { R.fired[fk] = 1; if (FLIP.busy || FLIP.q.length) FLIP.confetti = true; else confetti(); }
@@ -1200,6 +1201,7 @@ function doneHTML(S, st, isHost) {
     '<div class="champ-acts"><a class="btn" href="' + esc(howToURL(c.n)) + '" target="_blank" rel="noopener" data-wa="how_to_play">How to play</a>' +
     (c.i ? '<a class="btn ghost" href="' + esc(bggURL(c.i)) + '" target="_blank" rel="noopener" data-wa="bgg">On BoardGameGeek</a>' : '') + '</div></div>';
   h += '<a class="btn ghost big" href="./" data-ev="' + (isHost ? 'new_bracket' : 'start_own') + '" data-from="champion">' + (isHost ? 'Start a new bracket' : 'Start your own bracket') + '</a>';
+  h += '<div class="install-slot" data-where="winner"></div>';
   return h;
 }
 
@@ -1470,10 +1472,83 @@ function confetti() {
   })();
 }
 
+/* =========================================================
+   INSTALL (add to home screen)
+   ========================================================= */
+/* Chrome and most Android browsers hand the page an install prompt (beforeinstallprompt) once the site
+   qualifies: manifest.webmanifest, the icons, and the service worker in sw.js. iPhones have no prompt,
+   so they get a short "Share, then Add to Home Screen" tip instead. The card sits on the home screen
+   and under the winner, and stays away once the app is installed or someone taps "Not now". */
+const INSTALL = {prompt: null, shown: {}};
+const isStandalone = () => { try { return matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; } catch (e) { return false; } };
+const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isAndroid = () => /Android/i.test(navigator.userAgent);
+function installMode() {
+  if (PREVIEW || isStandalone()) return '';
+  const until = store.get('install.hide', 0);
+  if (until && Date.now() < until) return '';
+  if (INSTALL.prompt) return 'prompt';
+  if (isIOS()) return 'ios';
+  if (isAndroid()) return 'android';
+  return '';
+}
+function installCardHTML(mode) {
+  const otherIOSBrowser = /CriOS|FxiOS|EdgiOS/.test(navigator.userAgent);
+  const text = mode === 'prompt' ? 'Add it to your home screen. It opens full screen, like any other app, with no app store needed.'
+    : mode === 'ios' ? (otherIOSBrowser ? 'Tap Share in your browser, then Add to Home Screen.' : 'In Safari, tap Share (under ••• on newer iPhones), then Add to Home Screen.')
+    : 'Open your browser’s menu (⋮), then tap Add to Home screen or Install app.';
+  return '<section class="panel install"><div class="install-row"><img class="install-ic" src="icons/icon-192.png" alt="" width="48" height="48"><div><h3>Keep Game Night Madness on your phone</h3><p class="fine">' + esc(text) + '</p></div></div>' +
+    '<div class="row install-acts">' + (mode === 'prompt' ? '<button type="button" class="btn sm" data-install="go">Install the app</button>' : '') + '<button type="button" class="linkbtn" data-install="later">Not now</button></div></section>';
+}
+function renderInstall() {
+  const mode = installMode();
+  $$('.install-slot').forEach(slot => {
+    if (slot.dataset.mode === mode) return;
+    slot.dataset.mode = mode;
+    slot.innerHTML = mode ? installCardHTML(mode) : '';
+    const where = slot.dataset.where || '';
+    if (mode && !INSTALL.shown[where + '.' + mode]) { INSTALL.shown[where + '.' + mode] = 1; track('install_card_shown', {where, mode}); }
+  });
+}
+function initInstall() {
+  if (PREVIEW) return;
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); INSTALL.prompt = e; renderInstall(); });
+  window.addEventListener('appinstalled', () => {
+    INSTALL.prompt = null; store.set('install.hide', Date.now() + 3650 * 864e5); renderInstall();
+    track('app_installed', {});
+    toast('Installed. Find Game Night Madness on your home screen.', 4000);
+  });
+  document.addEventListener('click', async e => {
+    const b = e.target.closest && e.target.closest('[data-install]'); if (!b) return;
+    const slot = b.closest('.install-slot'), where = slot ? slot.dataset.where : '', mode = slot ? slot.dataset.mode : '';
+    if (b.dataset.install === 'later') {
+      store.set('install.hide', Date.now() + 30 * 864e5);
+      track('install_card_dismissed', {where, mode});
+      renderInstall();
+      return;
+    }
+    const p = INSTALL.prompt; if (!p) return;
+    INSTALL.prompt = null; // each prompt can be shown only once
+    track('install_clicked', {where});
+    try {
+      await p.prompt();
+      const choice = await p.userChoice;
+      const outcome = choice && choice.outcome;
+      track('install_choice', {where, outcome: outcome || null});
+      if (outcome === 'dismissed') store.set('install.hide', Date.now() + 30 * 864e5);
+    } catch (x) {}
+    renderInstall();
+  });
+  renderInstall();
+}
+
 /* ---------- boot ---------- */
 function route() {
   const code = (new URLSearchParams(location.search).get('b') || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  track('app_opened', {entry: code ? 'bracket_link' : 'home', via: VIA || 'direct', first_visit: FIRST_VISIT, standalone: !!(window.matchMedia && matchMedia('(display-mode: standalone)').matches)});
+  track('app_opened', {entry: code ? 'bracket_link' : 'home', via: VIA || 'direct', first_visit: FIRST_VISIT, standalone: isStandalone()});
   if (code.length >= 6 && code.length <= 16) openRoom(code);
   else showSetup();
 }
@@ -1484,7 +1559,7 @@ document.addEventListener('error', e => { const t = e.target; if (t && t.tagName
 $$('.bgg-badge img').forEach(i => { if (i.complete && !i.naturalWidth) i.remove(); });
 loadAnalytics();
 initCoin();
-initSetup(); initBuild(); initJoin(); initRoom();
+initSetup(); initBuild(); initJoin(); initRoom(); initInstall();
 document.addEventListener('click', e => {
   const t = e.target.closest && e.target.closest('[data-wa],[data-ev]'); if (!t) return;
   const org = !!(R.S && R.S.host === me.id);

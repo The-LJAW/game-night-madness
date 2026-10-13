@@ -77,6 +77,18 @@ This repository is already live at https://the-ljaw.github.io/game-night-madness
 3. Go to **Settings → Pages**. Set **Source: Deploy from a branch**, **Branch: main**, folder **/ (root)**, and save.
 4. After a minute, the app is live at `https://<your-username>.github.io/game-night-madness/`, and the one-phone demo at `…/preview.html`.
 
+## Install it on a phone
+
+The site can be installed as an app: it gets its own home-screen icon and opens full screen, with no app store involved.
+
+- **Android (Chrome, Edge, Samsung Internet):** a "Keep Game Night Madness on your phone" card offers an **Install the app** button. Other Android browsers get a tip to use their menu's **Add to Home screen** or **Install app**.
+- **iPhone and iPad:** Apple doesn't let sites offer an install button, so the card explains it: in Safari, tap **Share** (under ••• on newer iPhones), then **Add to Home Screen**.
+- The card shows on the home screen and under the winner, where guests have just played. It never shows inside the installed app, and **Not now** hides it for 30 days.
+
+What makes this work: `manifest.webmanifest` (name, colors, icons), the icons in `icons/` (drawn by `tools/icons.mjs` from the app's bracket mark), the home-screen tags in the page's head, and `sw.js`, a small service worker. Chrome only offers its install button to sites with one. It always fetches from the network first, so nobody gets stuck on an old version, and it falls back to a saved copy only when the phone is offline.
+
+Good to know on iPhone: the installed app keeps its own storage, separate from Safari, so recent brackets and saved settings don't carry over between them. Bracket links and QR codes open in the browser rather than the installed app.
+
 ## What it runs on
 
 | Job | Service | Notes |
@@ -104,6 +116,6 @@ Analytics are **off** until `posthogKey` is set near the top of `src/app.js`. Us
 
 ## For developers
 
-- `python3 build.py` builds `index.html` and `preview.html` from `src/`.
+- `python3 build.py` builds `index.html` and `preview.html` from `src/`. `node tools/icons.mjs` redraws the app icons (needs sharp).
 - `node test/worker.test.mjs` tests the BGG helper. `node test/app.test.mjs` runs the app in a real browser against a fake BGG and a fake relay (needs Playwright; add `--shots` for screenshots).
 - See `CLAUDE.md` for how the code fits together.

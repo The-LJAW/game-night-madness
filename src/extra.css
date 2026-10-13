@@ -45,3 +45,11 @@
 .bgg-badge img+span{display:none}
 .bgg-badge:has(img){padding:0;border:1px solid var(--line-2);border-radius:12px;background:var(--logo-ground);overflow:hidden}
 .bgg-badge:has(img):hover{border-color:var(--line)}
+
+/* install card (add to home screen) */
+.install-row{display:flex;align-items:center;gap:14px}
+.install-row>div{min-width:0}
+.install-row p{margin:4px 0 0}
+.install-ic{width:48px;height:48px;border-radius:12px;flex:none;display:block}
+.install-acts{align-items:center;gap:8px 18px}
+.install-acts .linkbtn{align-self:center}
